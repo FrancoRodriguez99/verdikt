@@ -368,14 +368,22 @@ io.on('connection', (socket) => {
   // Called when a player's grace-period slot expired (phone was asleep too long)
   // and they want to re-enter a game already in progress.
   socket.on('rejoin_game', ({ roomCode, name } = {}) => {
-    if (!roomCode || !name?.trim()) return emitError(socket, 'INVALID_SESSION', 'Room code and name required');
+    console.log('[rejoin_game] received — socketId:', socket.id, '| roomCode:', roomCode, '| name:', name);
+
+    if (!roomCode || !name?.trim()) {
+      console.log('[rejoin_game] FAIL: missing roomCode or name');
+      return emitError(socket, 'INVALID_SESSION', 'Room code and name required');
+    }
 
     const device = extractDevice(socket);
     const result = gm.rejoinGame(socket.id, roomCode.toUpperCase(), name.trim(), device);
+    console.log('[rejoin_game] gm.rejoinGame result:', result.error ? `ERROR: ${result.error}` : 'OK');
+
     if (result.error) return emitError(socket, result.error, result.error);
 
     const { room, player } = result;
     socket.join(room.roomCode);
+    console.log('[rejoin_game] socket joined room', room.roomCode, '| room.status:', room.status, '| room.phase:', room.phase);
 
     io.to(room.roomCode).emit('player_joined', {
       player: { id: player.id, name: player.name, connected: true },
@@ -393,6 +401,7 @@ io.on('connection', (socket) => {
       sc = { submitted, total: active.length };
     }
 
+    console.log('[rejoin_game] emitting session_reconnected to socket', socket.id);
     socket.emit('session_reconnected', {
       players: gm.publicPlayers(room),
       settings: room.settings,
@@ -406,9 +415,7 @@ io.on('connection', (socket) => {
       gamePaused: room.gamePaused,
       playerId: socket.id, // new socket id — client must update localStorage
     });
-
-    // Also update localStorage so future reconnects use the new socket id
-    // (the client handles this on session_reconnected)
+    console.log('[rejoin_game] session_reconnected emitted OK');
 
     // Resume the game if it was paused waiting for this player
     const connected = room.players.filter(p => p.connected).length;
