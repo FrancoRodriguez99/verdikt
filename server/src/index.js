@@ -82,6 +82,16 @@ async function saveAnswers(docs) {
 }
 
 io.on('connection', (socket) => {
+  console.log('[connection] new socket connected — id:', socket.id, '| transport:', socket.conn.transport.name);
+
+  // Log every incoming event so we can see what actually arrives
+  socket.onAny((event, ...args) => {
+    console.log('[event]', event, JSON.stringify(args).slice(0, 200));
+  });
+
+  socket.on('disconnect', (reason) => {
+    console.log('[disconnect] socket:', socket.id, '| reason:', reason);
+  });
 
   // ── create_room ────────────────────────────────────────────────────────────
   socket.on('create_room', ({ name } = {}) => {
