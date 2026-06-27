@@ -65,6 +65,7 @@ class GameManager {
       roundsCompleted: 0,
       gamePaused: false,
       ghosts: [], // prank ghost players added by the owner
+      removedPlayers: [], // { id, name } — grace-period expelled players; used to re-key answers on rejoin
     };
 
     this.rooms.set(code, room);
@@ -87,6 +88,16 @@ class GameManager {
     const room = this.rooms.get(roomCode);
     if (!room) return { error: 'ROOM_NOT_FOUND' };
     if (room.status === 'lobby') return { error: 'USE_JOIN_ROOM' };
+
+    // Re-key old answers to the new socket ID if this player was previously removed
+    const removedIdx = (room.removedPlayers || []).findIndex(
+      p => p.name.toLowerCase() === name.trim().toLowerCase()
+    );
+    if (removedIdx !== -1) {
+      const oldId = room.removedPlayers[removedIdx].id;
+      this._reKeyPlayer(room, oldId, socketId);
+      room.removedPlayers.splice(removedIdx, 1);
+    }
 
     const player = { id: socketId, name: name.trim(), connected: true, disconnectTimer: null, device, joinedAt: new Date() };
     room.players.push(player);
@@ -228,6 +239,11 @@ class GameManager {
    * @returns {{ newHostId: string | null, belowMin: boolean }}
    */
   removePlayer(room, playerId) {
+    const leaving = room.players.find(p => p.id === playerId);
+    if (leaving) {
+      room.removedPlayers = room.removedPlayers || [];
+      room.removedPlayers.push({ id: playerId, name: leaving.name });
+    }
     room.players = room.players.filter(p => p.id !== playerId);
     this.playerRooms.delete(playerId);
 
