@@ -24,6 +24,10 @@ const initialState = {
   currentResults: null,
   roundsCompleted: 0,
   gamePaused: false,
+  // Prank / owner mode
+  ownerUnlocked: false,
+  ghostPlayers: [],       // fake players injected into current vote
+  rankingOverrides: {},   // { [playerId]: newValue } — visual only, current reveal
   // Final
   finalStats: null,
   // Error
@@ -109,6 +113,8 @@ function reducer(state, action) {
         hasSubmitted: false,
         currentResults: null,
         gamePaused: false,
+        ghostPlayers: [],
+        rankingOverrides: {},
         errorCode: null,
         errorMsg: null,
       };
@@ -134,6 +140,23 @@ function reducer(state, action) {
         submitCount: action.submitCount,
         hasSubmitted: false,
         currentResults: null,
+        ghostPlayers: [],
+        rankingOverrides: {},
+      };
+
+    case 'UNLOCK_OWNER':
+      return { ...state, ownerUnlocked: true };
+
+    case 'GHOST_ADDED':
+      return {
+        ...state,
+        ghostPlayers: [...state.ghostPlayers, action.ghost],
+      };
+
+    case 'RANKING_OVERRIDDEN':
+      return {
+        ...state,
+        rankingOverrides: { ...state.rankingOverrides, [action.playerId]: action.newValue },
       };
 
     case 'GAME_ENDED':
@@ -265,6 +288,14 @@ export function GameProvider({ children }) {
         dispatch({ type: 'GAME_ENDED', stats });
       }),
 
+      on('ghost_added', ({ ghost }) => {
+        dispatch({ type: 'GHOST_ADDED', ghost });
+      }),
+
+      on('ranking_overridden', ({ playerId, newValue }) => {
+        dispatch({ type: 'RANKING_OVERRIDDEN', playerId, newValue });
+      }),
+
       on('host_changed', ({ newHostId }) => {
         dispatch({ type: 'HOST_CHANGED', newHostId });
       }),
@@ -382,6 +413,18 @@ export function GameProvider({ children }) {
     dispatch({ type: 'RESET' });
   }, []);
 
+  const unlockOwner = useCallback(() => {
+    dispatch({ type: 'UNLOCK_OWNER' });
+  }, []);
+
+  const addGhostPlayer = useCallback((name) => {
+    socket?.emit('prank_add_ghost', { name });
+  }, [socket]);
+
+  const overrideRankingAnswer = useCallback((playerId, newValue) => {
+    socket?.emit('prank_ranking_override', { playerId, newValue });
+  }, [socket]);
+
   const goToJoin = useCallback(() => {
     dispatch({ type: 'SET_SCREEN', screen: 'join' });
     dispatch({ type: 'CLEAR_ERROR' });
@@ -406,6 +449,9 @@ export function GameProvider({ children }) {
     clearSession,
     goToJoin,
     goToLanding,
+    unlockOwner,
+    addGhostPlayer,
+    overrideRankingAnswer,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

@@ -10,7 +10,7 @@ const GameSession = require('./db/models/GameSession');
 const Answer = require('./db/models/Answer');
 const { extractDevice } = require('./db/deviceParser');
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3069;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 
 const app = express();
@@ -260,7 +260,8 @@ io.on('connection', (socket) => {
     if (room.currentQuestion?.id !== questionId) return emitError(socket, 'WRONG_QUESTION', 'Question mismatch');
     if (room.voteAnswers[questionId]?.[socket.id] !== undefined) return;
 
-    const targetExists = room.players.some(p => p.id === targetId);
+    const targetExists = room.players.some(p => p.id === targetId)
+      || (room.ghosts || []).some(g => g.id === targetId);
     if (!targetExists) return emitError(socket, 'INVALID_TARGET', 'Target player not found');
 
     const submitCount = gm.submitVote(room, socket.id, questionId, targetId);
@@ -357,6 +358,33 @@ io.on('connection', (socket) => {
         console.error('DB: GameSession finalise failed:', err.message);
       }
     }
+  });
+
+  // ── prank_add_ghost ────────────────────────────────────────────────────────
+  // Host-only easter egg: injects a fake player into the current vote options.
+  // Broadcasts the ghost to all clients so everyone sees them as a vote target.
+  socket.on('prank_add_ghost', ({ name } = {}) => {
+    const room = gm.getRoomByPlayer(socket.id);
+    if (!room || !gm.isHost(room, socket.id)) return;
+    if (room.phase !== 'vote') return;
+    if (!name?.trim()) return;
+
+    const ghost = gm.addGhost(room, name.trim());
+    io.to(room.roomCode).emit('ghost_added', { ghost });
+  });
+
+  // ── prank_ranking_override ─────────────────────────────────────────────────
+  // Host-only easter egg: visually changes a player's displayed ranking answer
+  // for the current reveal screen. Pure relay — no state change, no DB write.
+  socket.on('prank_ranking_override', ({ playerId, newValue } = {}) => {
+    const room = gm.getRoomByPlayer(socket.id);
+    if (!room || !gm.isHost(room, socket.id)) return;
+    if (room.phase !== 'ranking_reveal') return;
+
+    const v = parseInt(newValue, 10);
+    if (isNaN(v) || v < 1 || v > 5) return;
+
+    io.to(room.roomCode).emit('ranking_overridden', { playerId, newValue: v });
   });
 
   // ── leave_lobby ────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useGame } from '../contexts/GameContext';
 import { useLang } from '../contexts/LanguageContext';
 import WaitingIndicator from '../components/WaitingIndicator';
+import OwnerPanel from '../components/OwnerPanel';
 
 export default function VoteQuestion() {
   const { t, lang } = useLang();
@@ -9,17 +10,29 @@ export default function VoteQuestion() {
     currentQuestion, submitCount, hasSubmitted,
     isHost, submitVote, revealResults, players,
     endGame, roundsCompleted, gamePaused,
+    ghostPlayers, addGhostPlayer,
   } = useGame();
+
   const [selected, setSelected] = useState(null);
+  const [ghostName, setGhostName] = useState('');
 
   if (!currentQuestion) return null;
 
   const allAnswered = submitCount.submitted >= submitCount.total && submitCount.total > 0;
   const connectedPlayers = players.filter(p => p.connected !== false);
+  // Combine real players with ghosts — everyone sees both in the vote grid
+  const voteTargets = [...connectedPlayers, ...ghostPlayers];
 
   function handleSubmit() {
     if (!selected || hasSubmitted) return;
     submitVote(currentQuestion.id, selected);
+  }
+
+  function handleAddGhost() {
+    const name = ghostName.trim();
+    if (!name) return;
+    addGhostPlayer(name);
+    setGhostName('');
   }
 
   return (
@@ -41,19 +54,29 @@ export default function VoteQuestion() {
         {!hasSubmitted ? (
           <>
             <div className="vote-options">
-              {connectedPlayers.map((p, idx) => (
+              {voteTargets.map((p, idx) => (
                 <button
                   key={p.id}
                   className={`vote-option${selected === p.id ? ' selected' : ''}`}
                   onClick={() => setSelected(p.id)}
+                  style={p.isGhost ? { borderStyle: 'dashed', opacity: 0.9 } : {}}
                 >
                   <div
                     className="vote-avatar"
-                    style={{ background: `hsl(${(idx * 60 + 260) % 360}, 70%, 55%)` }}
+                    style={{
+                      background: p.isGhost
+                        ? 'linear-gradient(135deg, #4a0080, #7c3aed)'
+                        : `hsl(${(idx * 60 + 260) % 360}, 70%, 55%)`,
+                    }}
                   >
-                    {(p.name || '?').charAt(0).toUpperCase()}
+                    {p.isGhost ? '👻' : (p.name || '?').charAt(0).toUpperCase()}
                   </div>
                   {p.name}
+                  {p.isGhost && (
+                    <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                      (mystery)
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -88,6 +111,37 @@ export default function VoteQuestion() {
             {t('hostWillReveal')}
           </p>
         )}
+
+        {/* Owner prank panel — only renders for Franco/host after code unlock */}
+        <OwnerPanel>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 10 }}>
+            Add a mystery guest to the vote. Everyone will see them.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              className="input"
+              placeholder="Ghost player name…"
+              value={ghostName}
+              maxLength={20}
+              onChange={e => setGhostName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAddGhost()}
+              style={{ fontSize: '0.9rem', padding: '8px 12px' }}
+            />
+            <button
+              className="btn btn-secondary"
+              onClick={handleAddGhost}
+              disabled={!ghostName.trim()}
+              style={{ flexShrink: 0, padding: '8px 14px' }}
+            >
+              👻 Add
+            </button>
+          </div>
+          {ghostPlayers.length > 0 && (
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 8 }}>
+              Active ghosts: {ghostPlayers.map(g => g.name).join(', ')}
+            </p>
+          )}
+        </OwnerPanel>
       </div>
     </div>
   );

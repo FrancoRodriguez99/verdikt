@@ -64,6 +64,7 @@ class GameManager {
       voteAnswers: {},
       roundsCompleted: 0,
       gamePaused: false,
+      ghosts: [], // prank ghost players added by the owner
     };
 
     this.rooms.set(code, room);
@@ -284,11 +285,23 @@ class GameManager {
     room.currentQuestion = question;
     room.currentResults = null;
     room.voteAnswers[question.id] = {};
+    room.ghosts = []; // fresh ghost list for each vote question
     return {
       phase: 'vote',
       question,
       submitCount: this._submitCount(room, 'vote'),
     };
+  }
+
+  /**
+   * Add a ghost (fake) player to the current vote question.
+   * @param {GameRoom} room
+   * @param {string} name
+   */
+  addGhost(room, name) {
+    const ghost = { id: `__ghost__${Date.now()}`, name: name.trim(), isGhost: true };
+    room.ghosts.push(ghost);
+    return ghost;
   }
 
   /**
@@ -360,19 +373,24 @@ class GameManager {
       room.phase = 'vote_reveal';
       const rawVotes = room.voteAnswers[qId] || {};
 
-      // Count votes per player
+      // Real players + ghost players are all valid vote targets
+      const ghosts = room.ghosts || [];
+      const allTargets = [...activePlayers, ...ghosts];
+
+      // Count votes per target (real + ghost)
       const voteCounts = {};
-      for (const p of activePlayers) voteCounts[p.id] = 0;
+      for (const t of allTargets) voteCounts[t.id] = 0;
       for (const targetId of Object.values(rawVotes)) {
         if (voteCounts[targetId] !== undefined) voteCounts[targetId]++;
       }
 
-      const ranked = activePlayers
+      const ranked = allTargets
         .map((p, idx) => ({
           playerId: p.id,
-          name: anonymous ? null : p.name,
-          label: anonymous ? `Player ${idx + 1}` : p.name,
+          name: anonymous && !p.isGhost ? null : p.name,
+          label: anonymous && !p.isGhost ? `Player ${idx + 1}` : p.name,
           votes: voteCounts[p.id] ?? 0,
+          isGhost: p.isGhost ?? false,
           voters: anonymous ? [] : Object.entries(rawVotes)
             .filter(([, tid]) => tid === p.id)
             .map(([vid]) => {
