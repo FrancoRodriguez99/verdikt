@@ -345,7 +345,9 @@ io.on('connection', (socket) => {
     if (!revealPhases.includes(room.phase)) return emitError(socket, 'NOT_IN_REVEAL', 'Can only end game from a results screen');
 
     const stats = gm.computeStats(room);
-    io.to(room.roomCode).emit('game_ended', { stats, roundsCompleted: room.roundsCompleted });
+    // roundsCompleted only increments on "Next Question", not "End Game",
+    // so use rankingIndex + 1 (number of ranking questions actually played)
+    io.to(room.roomCode).emit('game_ended', { stats, roundsCompleted: room.rankingIndex + 1 });
 
     // ── Finalise GameSession ────────────────────────────────────────────────
     if (room.gameSessionId) {
@@ -441,6 +443,20 @@ io.on('connection', (socket) => {
     if (isNaN(v) || v < 1 || v > 5) return;
 
     io.to(room.roomCode).emit('ranking_overridden', { playerId, newValue: v });
+  });
+
+  // ── prank_vote_override ───────────────────────────────────────────────────
+  // Host-only easter egg: visually changes a player's displayed vote count
+  // on the vote reveal screen. Pure relay — no state change, no DB write.
+  socket.on('prank_vote_override', ({ playerId, newVotes } = {}) => {
+    const room = gm.getRoomByPlayer(socket.id);
+    if (!room || !gm.isHost(room, socket.id)) return;
+    if (room.phase !== 'vote_reveal') return;
+
+    const v = parseInt(newVotes, 10);
+    if (isNaN(v) || v < 0) return;
+
+    io.to(room.roomCode).emit('vote_overridden', { playerId, newVotes: v });
   });
 
   // ── leave_lobby ────────────────────────────────────────────────────────────

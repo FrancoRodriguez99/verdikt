@@ -42,7 +42,7 @@ export default function PlayerField({ playerAnswers }) {
         {circles.map(c => (
           <div
             key={c.playerId}
-            className="player-circle"
+            className={`player-circle${c.isOverridden ? ' player-circle--pranked' : ''}`}
             style={{
               left: `calc(${c.x}% - 19px)`,
               top: c.top,

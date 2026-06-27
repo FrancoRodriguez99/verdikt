@@ -28,6 +28,7 @@ const initialState = {
   ownerUnlocked: false,
   ghostPlayers: [],       // fake players injected into current vote
   rankingOverrides: {},   // { [playerId]: newValue } — visual only, current reveal
+  voteOverrides: {},      // { [playerId]: newVoteCount } — visual only, current reveal
   // Final
   finalStats: null,
   // Error
@@ -116,6 +117,7 @@ function reducer(state, action) {
         gamePaused: false,
         ghostPlayers: [],
         rankingOverrides: {},
+        voteOverrides: {},
         errorCode: null,
         errorMsg: null,
       };
@@ -143,6 +145,7 @@ function reducer(state, action) {
         currentResults: null,
         ghostPlayers: [],
         rankingOverrides: {},
+        voteOverrides: {},
       };
 
     case 'UNLOCK_OWNER':
@@ -158,6 +161,12 @@ function reducer(state, action) {
       return {
         ...state,
         rankingOverrides: { ...state.rankingOverrides, [action.playerId]: action.newValue },
+      };
+
+    case 'VOTE_OVERRIDDEN':
+      return {
+        ...state,
+        voteOverrides: { ...state.voteOverrides, [action.playerId]: action.newVotes },
       };
 
     case 'GAME_ENDED':
@@ -271,6 +280,7 @@ export function GameProvider({ children }) {
       }),
 
       on('session_reconnected', (data) => {
+        rejoinPendingRef.current = null; // rejoin succeeded, clear retry marker
         dispatch({ type: 'SESSION_RECONNECTED', ...data });
       }),
 
@@ -314,6 +324,10 @@ export function GameProvider({ children }) {
         dispatch({ type: 'RANKING_OVERRIDDEN', playerId, newValue });
       }),
 
+      on('vote_overridden', ({ playerId, newVotes }) => {
+        dispatch({ type: 'VOTE_OVERRIDDEN', playerId, newVotes });
+      }),
+
       on('host_changed', ({ newHostId }) => {
         dispatch({ type: 'HOST_CHANGED', newHostId });
       }),
@@ -355,8 +369,16 @@ export function GameProvider({ children }) {
     if (!socket) return;
 
     const tryReconnect = () => {
-      // Already showing the rejoin screen — don't loop back into reconnecting
-      if (stateRef.current.screen === 'session_expired') return;
+      // If rejoin is in flight and the socket just reconnected, re-fire rejoin_game
+      // (handles the case where the socket disconnects between the button click
+      //  and the server response — common on mobile during transport upgrades)
+      if (stateRef.current.screen === 'session_expired') {
+        if (rejoinPendingRef.current) {
+          const { roomCode, name } = rejoinPendingRef.current;
+          socket.emit('rejoin_game', { roomCode, name });
+        }
+        return;
+      }
       const stored = localStorage.getItem(LS_KEY);
       if (!stored) return;
       try {
@@ -384,6 +406,8 @@ export function GameProvider({ children }) {
   // ── Action creators ────────────────────────────────────────────────────────
   // Store pending name so session_created can populate the playerName field
   const pendingNameRef = useRef(null);
+  // Tracks an in-flight rejoin attempt so a mid-rejoin socket reconnect retries it
+  const rejoinPendingRef = useRef(null); // { roomCode, name } | null
 
   const createRoom = useCallback((name) => {
     dispatch({ type: 'CLEAR_ERROR' });
@@ -439,7 +463,7 @@ export function GameProvider({ children }) {
   }, []);
 
   const rejoinGame = useCallback((roomCode, name) => {
-    pendingNameRef.current = name;
+    rejoinPendingRef.current = { roomCode, name }; // persist for auto-retry on reconnect
     socket?.emit('rejoin_game', { roomCode, name });
   }, [socket]);
 
@@ -453,6 +477,10 @@ export function GameProvider({ children }) {
 
   const overrideRankingAnswer = useCallback((playerId, newValue) => {
     socket?.emit('prank_ranking_override', { playerId, newValue });
+  }, [socket]);
+
+  const overrideVoteCount = useCallback((playerId, newVotes) => {
+    socket?.emit('prank_vote_override', { playerId, newVotes });
   }, [socket]);
 
   const goToJoin = useCallback(() => {
@@ -482,6 +510,7 @@ export function GameProvider({ children }) {
     unlockOwner,
     addGhostPlayer,
     overrideRankingAnswer,
+    overrideVoteCount,
     rejoinGame,
   };
 

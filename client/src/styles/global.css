@@ -474,6 +474,18 @@ p  { color: var(--text-secondary); }
   z-index: 1;
 }
 
+.player-circle--pranked {
+  background: var(--danger);
+  border-color: #ff6b8a;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3);
+  animation: prank-pop 0.5s ease;
+}
+@keyframes prank-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+
 .player-circle-label {
   position: absolute;
   top: 100%;

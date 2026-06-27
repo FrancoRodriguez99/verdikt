@@ -24,6 +24,7 @@ export default function RankingResults() {
   const playerAnswers = currentResults.playerAnswers.map(p => ({
     ...p,
     value: rankingOverrides[p.playerId] ?? p.value,
+    isOverridden: rankingOverrides[p.playerId] !== undefined,
   }));
 
   function handleOverride() {
