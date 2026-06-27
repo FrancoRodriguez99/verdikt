@@ -81,12 +81,21 @@ async function saveAnswers(docs) {
   }
 }
 
-io.on('connection', (socket) => {
-  console.log('[connection] new socket connected — id:', socket.id, '| transport:', socket.conn.transport.name);
+// ── Engine.io level (fires before Socket.io namespace connection) ────────────
+io.engine.on('connection', (rawSocket) => {
+  console.log('[engine] raw connection — id:', rawSocket.id, '| transport:', rawSocket.transport.name);
+});
 
-  // Log every incoming event so we can see what actually arrives
+io.engine.on('connection_error', (err) => {
+  console.log('[engine] connection_error:', err.req?.url, err.code, err.message);
+});
+
+io.on('connection', (socket) => {
+  console.log('[socket.io] namespace connected — id:', socket.id, '| transport:', socket.conn.transport.name);
+
+  // Log every incoming event so we can see what actually arrives at Socket.io level
   socket.onAny((event, ...args) => {
-    console.log('[event]', event, JSON.stringify(args).slice(0, 200));
+    console.log('[event received]', event, JSON.stringify(args).slice(0, 200));
   });
 
   socket.on('disconnect', (reason) => {
@@ -377,61 +386,66 @@ io.on('connection', (socket) => {
   // ── rejoin_game ────────────────────────────────────────────────────────────
   // Called when a player's grace-period slot expired (phone was asleep too long)
   // and they want to re-enter a game already in progress.
-  socket.on('rejoin_game', ({ roomCode, name } = {}) => {
-    console.log('[rejoin_game] received — socketId:', socket.id, '| roomCode:', roomCode, '| name:', name);
+  socket.on('rejoin_game', (payload = {}) => {
+    console.log('[rejoin_game] HANDLER FIRED — raw payload:', JSON.stringify(payload));
+    try {
+      const { roomCode, name } = payload;
+      console.log('[rejoin_game] socketId:', socket.id, '| roomCode:', roomCode, '| name:', name);
 
-    if (!roomCode || !name?.trim()) {
-      console.log('[rejoin_game] FAIL: missing roomCode or name');
-      return emitError(socket, 'INVALID_SESSION', 'Room code and name required');
-    }
+      if (!roomCode || !name?.trim()) {
+        console.log('[rejoin_game] FAIL: missing roomCode or name');
+        return emitError(socket, 'INVALID_SESSION', 'Room code and name required');
+      }
 
-    const device = extractDevice(socket);
-    const result = gm.rejoinGame(socket.id, roomCode.toUpperCase(), name.trim(), device);
-    console.log('[rejoin_game] gm.rejoinGame result:', result.error ? `ERROR: ${result.error}` : 'OK');
+      const device = extractDevice(socket);
+      const result = gm.rejoinGame(socket.id, roomCode.toUpperCase(), name.trim(), device);
+      console.log('[rejoin_game] gm.rejoinGame result:', result.error ? `ERROR: ${result.error}` : 'OK, room=' + result.room?.roomCode);
 
-    if (result.error) return emitError(socket, result.error, result.error);
+      if (result.error) return emitError(socket, result.error, result.error);
 
-    const { room, player } = result;
-    socket.join(room.roomCode);
-    console.log('[rejoin_game] socket joined room', room.roomCode, '| room.status:', room.status, '| room.phase:', room.phase);
+      const { room, player } = result;
+      socket.join(room.roomCode);
+      console.log('[rejoin_game] joined room', room.roomCode, '| status:', room.status, '| phase:', room.phase);
 
-    io.to(room.roomCode).emit('player_joined', {
-      player: { id: player.id, name: player.name, connected: true },
-      players: gm.publicPlayers(room),
-    });
+      io.to(room.roomCode).emit('player_joined', {
+        player: { id: player.id, name: player.name, connected: true },
+        players: gm.publicPlayers(room),
+      });
 
-    // Compute current submit count so rejoined player's UI is in sync
-    let sc = { submitted: 0, total: room.players.filter(p => p.connected).length };
-    if (room.currentQuestion && room.phase) {
-      const phase = (room.phase === 'ranking' || room.phase === 'ranking_reveal') ? 'ranking' : 'vote';
-      const answers = phase === 'ranking' ? room.answers : room.voteAnswers;
-      const active = room.players.filter(p => p.connected);
-      const submitted = Object.keys(answers[room.currentQuestion.id] || {})
-        .filter(pid => active.some(p => p.id === pid)).length;
-      sc = { submitted, total: active.length };
-    }
+      let sc = { submitted: 0, total: room.players.filter(p => p.connected).length };
+      if (room.currentQuestion && room.phase) {
+        const phase = (room.phase === 'ranking' || room.phase === 'ranking_reveal') ? 'ranking' : 'vote';
+        const answers = phase === 'ranking' ? room.answers : room.voteAnswers;
+        const active = room.players.filter(p => p.connected);
+        const submitted = Object.keys(answers[room.currentQuestion.id] || {})
+          .filter(pid => active.some(p => p.id === pid)).length;
+        sc = { submitted, total: active.length };
+      }
 
-    console.log('[rejoin_game] emitting session_reconnected to socket', socket.id);
-    socket.emit('session_reconnected', {
-      players: gm.publicPlayers(room),
-      settings: room.settings,
-      status: room.status,
-      phase: room.phase,
-      currentQuestion: room.currentQuestion,
-      currentResults: room.currentResults,
-      submitCount: sc,
-      roundsCompleted: room.roundsCompleted,
-      isHost: false, // rejoined players never recover host status
-      gamePaused: room.gamePaused,
-      playerId: socket.id, // new socket id — client must update localStorage
-    });
-    console.log('[rejoin_game] session_reconnected emitted OK');
+      console.log('[rejoin_game] emitting session_reconnected → socket', socket.id);
+      socket.emit('session_reconnected', {
+        players: gm.publicPlayers(room),
+        settings: room.settings,
+        status: room.status,
+        phase: room.phase,
+        currentQuestion: room.currentQuestion,
+        currentResults: room.currentResults,
+        submitCount: sc,
+        roundsCompleted: room.roundsCompleted,
+        isHost: false,
+        gamePaused: room.gamePaused,
+        playerId: socket.id,
+      });
+      console.log('[rejoin_game] DONE — session_reconnected emitted successfully');
 
-    // Resume the game if it was paused waiting for this player
-    const connected = room.players.filter(p => p.connected).length;
-    if (room.gamePaused && connected >= gm.MIN_PLAYERS) {
-      room.gamePaused = false;
-      io.to(room.roomCode).emit('game_resumed', { players: gm.publicPlayers(room) });
+      const connected = room.players.filter(p => p.connected).length;
+      if (room.gamePaused && connected >= gm.MIN_PLAYERS) {
+        room.gamePaused = false;
+        io.to(room.roomCode).emit('game_resumed', { players: gm.publicPlayers(room) });
+      }
+    } catch (err) {
+      console.error('[rejoin_game] UNCAUGHT EXCEPTION:', err.stack || err.message);
+      emitError(socket, 'SERVER_ERROR', err.message);
     }
   });
 
