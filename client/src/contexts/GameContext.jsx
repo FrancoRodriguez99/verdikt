@@ -201,6 +201,22 @@ function reducer(state, action) {
         errorMsg: action.message,
       };
 
+    case 'SESSION_EXPIRED': {
+      // Grace period elapsed — we know roomCode + playerName from localStorage,
+      // keep them in state so the rejoin screen can offer one-tap rejoin.
+      const stored = (() => {
+        try { return JSON.parse(localStorage.getItem('verdikt_session') || '{}'); }
+        catch { return {}; }
+      })();
+      return {
+        ...state,
+        screen: 'session_expired',
+        roomCode: stored.roomCode ?? state.roomCode,
+        playerName: stored.playerName ?? state.playerName,
+        errorCode: 'PLAYER_NOT_IN_ROOM',
+      };
+    }
+
     case 'CLEAR_ERROR':
       return { ...state, errorCode: null, errorMsg: null };
 
@@ -314,10 +330,15 @@ export function GameProvider({ children }) {
       }),
 
       on('error', ({ code, message }) => {
-        // Fatal errors that should send to error screen
-        const fatalCodes = ['ROOM_NOT_FOUND', 'GAME_ALREADY_STARTED', 'PLAYER_NOT_IN_ROOM'];
-        if (fatalCodes.includes(code) && stateRef.current.screen === 'reconnecting') {
-          dispatch({ type: 'FATAL_ERROR', code, message });
+        if (stateRef.current.screen === 'reconnecting') {
+          if (code === 'PLAYER_NOT_IN_ROOM') {
+            // Grace period expired — offer rejoin instead of hard error
+            dispatch({ type: 'SESSION_EXPIRED' });
+          } else if (code === 'ROOM_NOT_FOUND' || code === 'GAME_ALREADY_STARTED') {
+            dispatch({ type: 'FATAL_ERROR', code, message });
+          } else {
+            dispatch({ type: 'ERROR', code, message });
+          }
         } else {
           dispatch({ type: 'ERROR', code, message });
         }
@@ -413,6 +434,11 @@ export function GameProvider({ children }) {
     dispatch({ type: 'RESET' });
   }, []);
 
+  const rejoinGame = useCallback((roomCode, name) => {
+    pendingNameRef.current = name;
+    socket?.emit('rejoin_game', { roomCode, name });
+  }, [socket]);
+
   const unlockOwner = useCallback(() => {
     dispatch({ type: 'UNLOCK_OWNER' });
   }, []);
@@ -452,6 +478,7 @@ export function GameProvider({ children }) {
     unlockOwner,
     addGhostPlayer,
     overrideRankingAnswer,
+    rejoinGame,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

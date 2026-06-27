@@ -61,11 +61,9 @@ export default function VoteResults() {
             <button className="btn btn-primary btn-full btn-lg" onClick={nextQuestion}>
               {t('nextQuestion')}
             </button>
-            {roundsCompleted >= 1 && (
-              <button className="btn btn-ghost btn-full" onClick={endGame}>
-                {t('endGame')}
-              </button>
-            )}
+            <button className="btn btn-ghost btn-full" onClick={endGame}>
+              {t('endGame')}
+            </button>
           </div>
         )}
 

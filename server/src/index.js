@@ -340,7 +340,9 @@ io.on('connection', (socket) => {
     const room = gm.getRoomByPlayer(socket.id);
     if (!room) return emitError(socket, 'NOT_IN_ROOM', 'Not in a room');
     if (!gm.isHost(room, socket.id)) return emitError(socket, 'NOT_HOST', 'Only the host can end');
-    if (room.roundsCompleted < 1) return emitError(socket, 'TOO_EARLY', 'Complete at least one round first');
+    // Allow ending from any reveal phase — the button only appears on results screens anyway
+    const revealPhases = ['ranking_reveal', 'vote_reveal'];
+    if (!revealPhases.includes(room.phase)) return emitError(socket, 'NOT_IN_REVEAL', 'Can only end game from a results screen');
 
     const stats = gm.computeStats(room);
     io.to(room.roomCode).emit('game_ended', { stats });
@@ -357,6 +359,59 @@ io.on('connection', (socket) => {
       } catch (err) {
         console.error('DB: GameSession finalise failed:', err.message);
       }
+    }
+  });
+
+  // ── rejoin_game ────────────────────────────────────────────────────────────
+  // Called when a player's grace-period slot expired (phone was asleep too long)
+  // and they want to re-enter a game already in progress.
+  socket.on('rejoin_game', ({ roomCode, name } = {}) => {
+    if (!roomCode || !name?.trim()) return emitError(socket, 'INVALID_SESSION', 'Room code and name required');
+
+    const device = extractDevice(socket);
+    const result = gm.rejoinGame(socket.id, roomCode.toUpperCase(), name.trim(), device);
+    if (result.error) return emitError(socket, result.error, result.error);
+
+    const { room, player } = result;
+    socket.join(room.roomCode);
+
+    io.to(room.roomCode).emit('player_joined', {
+      player: { id: player.id, name: player.name, connected: true },
+      players: gm.publicPlayers(room),
+    });
+
+    // Compute current submit count so rejoined player's UI is in sync
+    let sc = { submitted: 0, total: room.players.filter(p => p.connected).length };
+    if (room.currentQuestion && room.phase) {
+      const phase = (room.phase === 'ranking' || room.phase === 'ranking_reveal') ? 'ranking' : 'vote';
+      const answers = phase === 'ranking' ? room.answers : room.voteAnswers;
+      const active = room.players.filter(p => p.connected);
+      const submitted = Object.keys(answers[room.currentQuestion.id] || {})
+        .filter(pid => active.some(p => p.id === pid)).length;
+      sc = { submitted, total: active.length };
+    }
+
+    socket.emit('session_reconnected', {
+      players: gm.publicPlayers(room),
+      settings: room.settings,
+      status: room.status,
+      phase: room.phase,
+      currentQuestion: room.currentQuestion,
+      currentResults: room.currentResults,
+      submitCount: sc,
+      roundsCompleted: room.roundsCompleted,
+      isHost: false, // rejoined players never recover host status
+      gamePaused: room.gamePaused,
+    });
+
+    // Also update localStorage so future reconnects use the new socket id
+    // (the client handles this on session_reconnected)
+
+    // Resume the game if it was paused waiting for this player
+    const connected = room.players.filter(p => p.connected).length;
+    if (room.gamePaused && connected >= gm.MIN_PLAYERS) {
+      room.gamePaused = false;
+      io.to(room.roomCode).emit('game_resumed', { players: gm.publicPlayers(room) });
     }
   });
 

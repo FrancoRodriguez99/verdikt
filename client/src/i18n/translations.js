@@ -154,6 +154,23 @@ const translations = {
   tag_optimistic: { en: 'Optimistic', it: 'Ottimista', es: 'Optimista' },
   tag_cautious: { en: 'Cautious', it: 'Cauto', es: 'Cauteloso' },
 
+  // ── Session expired / rejoin ───────────────────────────────────────────────
+  sessionExpiredTitle: {
+    en: 'You were away too long',
+    it: 'Sei stato via troppo a lungo',
+    es: 'Estuviste ausente demasiado tiempo',
+  },
+  sessionExpiredMsg: {
+    en: 'Your spot was removed after a 60-second timeout. The game might still be going — tap below to jump back in.',
+    it: 'Il tuo posto è stato rimosso dopo 60 secondi. Il gioco potrebbe essere ancora in corso — tocca qui sotto per rientrare.',
+    es: 'Tu lugar fue eliminado después de 60 segundos. El juego puede seguir en curso — toca abajo para volver.',
+  },
+  rejoinAs: {
+    en: 'Rejoin as {name}',
+    it: 'Rientra come {name}',
+    es: 'Volver como {name}',
+  },
+
   // ── Errors ─────────────────────────────────────────────────────────────────
   errorTitle: { en: 'Something went wrong', it: 'Qualcosa è andato storto', es: 'Algo salió mal' },
   err_ROOM_NOT_FOUND: {

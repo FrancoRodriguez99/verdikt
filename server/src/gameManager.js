@@ -3,7 +3,7 @@
 const { rankingQuestions, voteQuestions, shuffle } = require('./data/questions');
 
 const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const GRACE_PERIOD_MS = 10_000;
+const GRACE_PERIOD_MS = 60_000; // 60 s — covers typical phone sleep/wake reconnect time
 const MIN_PLAYERS = 3;
 
 /**
@@ -70,6 +70,28 @@ class GameManager {
     this.rooms.set(code, room);
     this.playerRooms.set(socketId, code);
     return room;
+  }
+
+  /**
+   * Re-add a player whose grace-period slot expired to an in-progress game.
+   * Unlike reconnectPlayer (which needs the old socket id), this only needs
+   * the room code and name — used when the phone was away long enough that
+   * the slot was fully removed.
+   * @param {string} socketId
+   * @param {string} roomCode
+   * @param {string} name
+   * @param {object} device
+   * @returns {{ room: GameRoom, player: Player } | { error: string }}
+   */
+  rejoinGame(socketId, roomCode, name, device = {}) {
+    const room = this.rooms.get(roomCode);
+    if (!room) return { error: 'ROOM_NOT_FOUND' };
+    if (room.status === 'lobby') return { error: 'USE_JOIN_ROOM' };
+
+    const player = { id: socketId, name: name.trim(), connected: true, disconnectTimer: null, device, joinedAt: new Date() };
+    room.players.push(player);
+    this.playerRooms.set(socketId, roomCode);
+    return { room, player };
   }
 
   /**
@@ -597,4 +619,6 @@ class GameManager {
   }
 }
 
-module.exports = new GameManager();
+const instance = new GameManager();
+instance.MIN_PLAYERS = MIN_PLAYERS;
+module.exports = instance;
