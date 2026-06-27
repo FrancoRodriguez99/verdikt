@@ -78,6 +78,7 @@ function reducer(state, action) {
         screen: action.status === 'finished' ? 'final'
                : action.status === 'playing' ? 'game'
                : 'lobby',
+        playerId: action.playerId ?? state.playerId,
         players: action.players,
         settings: action.settings,
         phase: action.phase,
@@ -164,6 +165,7 @@ function reducer(state, action) {
         ...state,
         screen: 'final',
         finalStats: action.stats,
+        roundsCompleted: action.roundsCompleted ?? state.roundsCompleted,
       };
 
     case 'HOST_CHANGED':
@@ -300,8 +302,8 @@ export function GameProvider({ children }) {
         dispatch({ type: 'NEXT_QUESTION_STARTED', phase, question, submitCount });
       }),
 
-      on('game_ended', ({ stats }) => {
-        dispatch({ type: 'GAME_ENDED', stats });
+      on('game_ended', ({ stats, roundsCompleted }) => {
+        dispatch({ type: 'GAME_ENDED', stats, roundsCompleted });
       }),
 
       on('ghost_added', ({ ghost }) => {
@@ -353,6 +355,8 @@ export function GameProvider({ children }) {
     if (!socket) return;
 
     const tryReconnect = () => {
+      // Already showing the rejoin screen — don't loop back into reconnecting
+      if (stateRef.current.screen === 'session_expired') return;
       const stored = localStorage.getItem(LS_KEY);
       if (!stored) return;
       try {

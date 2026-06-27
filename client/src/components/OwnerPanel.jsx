@@ -1,19 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { useGame } from '../contexts/GameContext';
 
-/**
- * Easter-egg owner panel.
- * Only renders for the player named "Franco" who is also the host.
- * A subtle 🔒 button lives in the bottom-right corner.
- * Typing the secret code "owner" unlocks a collapsible prank panel.
- * `children` receive the prank controls for the current screen.
- */
-export default function OwnerPanel({ children }) {
+export default function OwnerPanel({ children, triggerOnly = false }) {
   const { isHost, playerName, ownerUnlocked, unlockOwner } = useGame();
   const [showInput, setShowInput] = useState(false);
   const [code, setCode] = useState('');
   const [shake, setShake] = useState(false);
   const inputRef = useRef(null);
+
+  // Must be before any early returns (rules of hooks)
+  useEffect(() => {
+    if (showInput) inputRef.current?.focus();
+  }, [showInput]);
 
   // Only Franco the host gets this
   if (!isHost || playerName?.toLowerCase() !== 'franco') return null;
@@ -36,12 +34,39 @@ export default function OwnerPanel({ children }) {
     }
   }
 
-  useEffect(() => {
-    if (showInput) inputRef.current?.focus();
-  }, [showInput]);
-
-  if (!ownerUnlocked) {
+  // Controls-only mode (VoteQuestion / RankingResults): trigger lives in GameRouter
+  if (!triggerOnly) {
+    if (!ownerUnlocked) return null;
     return (
+      <div style={{
+        background: 'rgba(124,58,237,0.08)',
+        border: '1px dashed var(--primary-border)',
+        borderRadius: 'var(--radius-sm)',
+        padding: '14px 16px',
+        marginTop: 20,
+      }}>
+        <div style={{
+          fontSize: '0.65rem',
+          fontWeight: 800,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: 'var(--primary-light)',
+          marginBottom: 12,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}>
+          🎭 Owner Mode
+        </div>
+        {children}
+      </div>
+    );
+  }
+
+  // Trigger-only mode: show the 🔒 button; disappear once unlocked
+  if (ownerUnlocked) return null;
+
+  return (
       <div style={{
         position: 'fixed',
         bottom: 14,
@@ -107,31 +132,4 @@ export default function OwnerPanel({ children }) {
         `}</style>
       </div>
     );
-  }
-
-  // Unlocked — render prank panel inline wherever this component is placed
-  return (
-    <div style={{
-      background: 'rgba(124,58,237,0.08)',
-      border: '1px dashed var(--primary-border)',
-      borderRadius: 'var(--radius-sm)',
-      padding: '14px 16px',
-      marginTop: 20,
-    }}>
-      <div style={{
-        fontSize: '0.65rem',
-        fontWeight: 800,
-        letterSpacing: '0.12em',
-        textTransform: 'uppercase',
-        color: 'var(--primary-light)',
-        marginBottom: 12,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-      }}>
-        🎭 Owner Mode
-      </div>
-      {children}
-    </div>
-  );
 }

@@ -345,7 +345,7 @@ io.on('connection', (socket) => {
     if (!revealPhases.includes(room.phase)) return emitError(socket, 'NOT_IN_REVEAL', 'Can only end game from a results screen');
 
     const stats = gm.computeStats(room);
-    io.to(room.roomCode).emit('game_ended', { stats });
+    io.to(room.roomCode).emit('game_ended', { stats, roundsCompleted: room.roundsCompleted });
 
     // ── Finalise GameSession ────────────────────────────────────────────────
     if (room.gameSessionId) {
@@ -402,6 +402,7 @@ io.on('connection', (socket) => {
       roundsCompleted: room.roundsCompleted,
       isHost: false, // rejoined players never recover host status
       gamePaused: room.gamePaused,
+      playerId: socket.id, // new socket id — client must update localStorage
     });
 
     // Also update localStorage so future reconnects use the new socket id

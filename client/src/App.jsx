@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useGame } from './contexts/GameContext';
 import { useLang } from './contexts/LanguageContext';
 import LanguageSelector from './components/LanguageSelector';
+import OwnerPanel from './components/OwnerPanel';
 import Landing from './screens/Landing';
 import JoinGame from './screens/JoinGame';
 import Lobby from './screens/Lobby';
@@ -84,11 +85,16 @@ function ErrorScreen() {
 
 function GameRouter() {
   const { phase } = useGame();
-  if (phase === 'ranking') return <RankingQuestion />;
-  if (phase === 'ranking_reveal') return <RankingResults />;
-  if (phase === 'vote') return <VoteQuestion />;
-  if (phase === 'vote_reveal') return <VoteResults />;
-  return null;
+  return (
+    <>
+      {/* Persistent lock trigger for Franco/host — visible on every game phase */}
+      <OwnerPanel triggerOnly />
+      {phase === 'ranking' && <RankingQuestion />}
+      {phase === 'ranking_reveal' && <RankingResults />}
+      {phase === 'vote' && <VoteQuestion />}
+      {phase === 'vote_reveal' && <VoteResults />}
+    </>
+  );
 }
 
 function useRoomParam() {
