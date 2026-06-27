@@ -7,9 +7,11 @@ const LS_KEY = 'verdikt_session';
 
 /** @typedef {'landing'|'join'|'lobby'|'game'|'final'|'error'|'reconnecting'} Screen */
 
+const _initialScreen = new URLSearchParams(window.location.search).has('room') ? 'join' : 'landing';
+
 const initialState = {
   /** @type {Screen} */
-  screen: 'landing',
+  screen: _initialScreen,
   roomCode: null,
   playerId: null,
   playerName: null,
